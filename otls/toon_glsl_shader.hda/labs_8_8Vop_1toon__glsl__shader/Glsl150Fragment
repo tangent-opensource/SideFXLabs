@@ -16,6 +16,86 @@ out vec4 color;
 
 uniform mat4    glH_ViewMatrix;
 
+// layout(std140) uniform glH_Material
+// {
+//     vec3            ambient_color;
+//     vec3            diffuse_color;
+//     vec3            emission_color;
+//     vec3            specular_color;
+//     vec3            metallic_color;
+//     float           metal;
+//     float           material_alpha;
+//     float           material_alpha_parallel;
+//     float           roughness;
+//     float           diffuse_roughness;
+//     float           ior;
+//     float           reflection;
+//     float           coat_intensity;
+//     float           coat_roughness;
+//     int             specular_model;
+//     int             coat_spec_model;
+//     float           specular_tint;
+// 
+//     bool            use_geo_color;
+//     bool            use_packed_color;
+// 
+//     bool            has_textures;
+//     bool            has_diffuse_map;
+//     bool            has_spec_map;
+//     bool            has_opacity_map;
+//     bool            has_emission_map;
+//     bool            has_normal_map;
+//     bool            has_rough_map;
+//     bool            has_displace_map;
+//     bool            has_occlusion_map;
+//     bool            has_metallic_map;
+//     bool            has_coat_int_map;
+//     bool            has_coat_rough_map;
+//     bool            has_reflection_int_map;
+//     bool            has_reflect_map;
+//     
+//     ivec4           diffuse_udim_area;
+//     ivec4           spec_udim_area;
+//     ivec4           opacity_udim_area;
+//     ivec4           emission_udim_area;
+//     ivec4           normal_udim_area;
+//     ivec4           rough_udim_area; 
+//     ivec4           displace_udim_area;
+//     ivec4           occlusion_udim_area;
+//     ivec4           metallic_udim_area;
+//     ivec4           coat_int_udim_area;
+//     ivec4           coat_rough_udim_area;
+//     ivec4           reflection_udim_area;
+//     
+//     bool            has_env_map;
+//     vec3            envScale;
+//     mat3            envRotate;
+// 
+//     vec2            normalMapScaleShift;
+//     vec2            normalMapScale;
+//     vec3            normalMapXYZScale;
+//     int             normal_map_type; // space: 0=tangent, 1=world  
+//     int             normal_map_ncomps; // 2 or 3 component
+// 
+//     int             displace_space;
+//     float           displace_scale;
+//     float           displace_offset;
+//     bool            displace_y_up; // vs. z-up
+// 
+//     bool            invert_opacitymap;
+//     
+//     bool            invert_roughmap;
+//     vec4            rough_comp;
+//     
+//     vec4            occlusion_comp;
+//     vec4            metallic_comp;
+//     vec4            coat_int_comp;
+//     vec4            coat_rough_comp;
+// 
+//     bool            reflection_as_ior;
+//     vec4            reflection_comp;
+// };
+
 layout(std140) uniform glH_Material
 {
     vec3            ambient_color;
@@ -83,7 +163,7 @@ layout(std140) uniform glH_Material
     bool            displace_y_up; // vs. z-up
 
     bool            invert_opacitymap;
-    
+
     bool            invert_roughmap;
     vec4            rough_comp;
     
@@ -91,6 +171,7 @@ layout(std140) uniform glH_Material
     vec4            metallic_comp;
     vec4            coat_int_comp;
     vec4            coat_rough_comp;
+    vec4            opacity_comp;
 
     bool            reflection_as_ior;
     vec4            reflection_comp;
@@ -98,6 +179,8 @@ layout(std140) uniform glH_Material
 
 uniform vec3       lightPosition;
 uniform vec3       lightColour;
+uniform vec3        filllightcolour;
+uniform vec3        rimlightcolour;
 uniform float      lightIntensity;
 uniform float      threshold;
 uniform vec3       baseColour;
@@ -107,6 +190,7 @@ uniform sampler2D  emissionTexture;
 uniform vec2       uv_scale;
 uniform sampler2D  aoTexture;
 uniform float      aoscale;
+uniform vec3        shadowshift;
 
 vec4  HOUsampleDiffuseMap(vec2 tx);
 vec3  HOUsampleEmissionMap(vec2 tx);
@@ -184,6 +268,26 @@ void SimpleLightingModel(in vec3 P, in vec3 nN, inout vec3 lDiff, vec3 lightPos)
     //lDiff = vec3(step(0.4, worley));
 }
 
+// All components are in the range [0…1], including hue.
+vec3 rgb2hsv(vec3 c)
+{
+    vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+    vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+
+    float d = q.x - min(q.w, q.y);
+    float e = 1.0e-10;
+    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+
+// All components are in the range [0…1], including hue.
+vec3 hsv2rgb(vec3 c)
+{
+    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+
 void main()
 {
     vec3 nN, p, ptcol;
@@ -200,9 +304,32 @@ void main()
 
     //wire = HOUwireColor(fsIn.edgedist,fsIn.edgeflags,fsIn.selected);
     
-    vec3 diff = vec3(0.0);
-    SimpleLightingModel(p, nN, diff, lightPosition);
-    color = vec4(diff, 1.0);
+    vec3 diff = vec3(1.0);
+    //SimpleLightingModel(p, nN, diff, lightPosition);
+    vec3 lamb = vec3(0.0);
+    vec3 ldiff = vec3(0.0);
+    vec3 lspec = vec3(0.0);
+    float rough = 0.0;
+    float diff_rough = 0.0;
+    float mtl = 0.0;
+    float alpha = 1.0;
+    
+    HOUlightingModel(p, nN, ambient_color,diff,specular_color,
+                             metallic_color, lamb, ldiff, lspec,
+                             rough, diff_rough, ior, mtl, specular_model,alpha);
+    //
+    float keylightramp = smoothstep(0.29, 0.3, ldiff.r);
+    vec3 keyContribution = lightColour * keylightramp * fsIn.color.rgb;
+    vec3 keyShadow = hsv2rgb(rgb2hsv(fsIn.color.rgb) * shadowshift) * (1- keylightramp);
+    float filllightramp = smoothstep(0.12, 0.87, ldiff.g);
+    vec3 fillContribution = filllightramp * filllightcolour * fsIn.color.rgb;
+    float rimlightramp = smoothstep(0.17, 0.47, ldiff.b);
+    vec3 rimContribution = rimlightramp * rimlightcolour * fsIn.color.rgb;
+    float outline = clamp(smoothstep(0.3, 0.31, pow(clamp(dot(-normalize(p), nN),0,1), 1-ldiff.r)), 0, 1);
+    vec3 black = vec3(0.0);
+    vec3 outlineMix = mix(black, keyContribution + keyShadow + fillContribution, outline);
+    color = vec4(outlineMix + rimContribution, 1.0);
+    //color = vec4(vec3(outline), 1.0);
     //color = vec3(1.0, 0.5, 0.1);
     
 //     HOUassignOutputs(mix(vec3(1.0), ptcol, ambient_color.b),
