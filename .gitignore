@@ -23,3 +23,5 @@ log_parser.py
 
 #personal workspaces
 *.code-workspace
+
+[Bb]uild/
