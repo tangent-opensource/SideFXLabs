@@ -20,7 +20,7 @@ def _copy_package():
 
     for d in dirs:
         try:
-            shutil.copytree(src + "/" + d, dst + "/" + d)
+            shutil.copytree(src + "/" + d, dst + "/" + d, ignore=shutil.ignore_patterns('_rez_build', '.git'))
             print(" - Copying: {0} : {1}".format(src + "/" + d, dst + "/" + d))
         except Exception as e:
             print(" - " + str(e))
