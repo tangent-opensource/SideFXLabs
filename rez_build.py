@@ -1,7 +1,5 @@
 import os
 import shutil
-from glob import glob
-import subprocess
 
 def _copy_package():
     # Copy Tangent USD Build to rez build dir

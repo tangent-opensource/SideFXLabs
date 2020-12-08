@@ -8,7 +8,7 @@ authors = [
 ]
 
 build_requires = [
-    'python-3',
+    'python-2',
 ]
 
 requires = [
