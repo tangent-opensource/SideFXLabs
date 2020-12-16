@@ -1,6 +1,6 @@
 name = 'sidefxlabs'
 
-version = '18.5.420-ta.1.0.0'
+version = '18.5.420-ta.1.1.0'
 
 authors = [
     'benjamin.skinner',
@@ -31,7 +31,8 @@ def commands():
     env.SIDEFXLABS_PACKAGE_VERSION.set(split_versions[1])
 
     env.sidefxlabs_current_version.set("MANUAL")
+    env.version.set("MANUAL")
     env.SIDEFXLABS.set( '{root}\\build' )
     
     env.PATH.prepend( '{0}\\bin'.format(env.SIDEFXLABS) )
-    env.HOUDINI_PATH.append( '{0};&'.format(env.SIDEFXLABS) )
+    env.HOUDINI_PATH.prepend( '{0};&'.format(env.SIDEFXLABS) )
