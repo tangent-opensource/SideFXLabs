@@ -1,6 +1,6 @@
 name = 'sidefxlabs'
 
-version = '18.5.420-ta.1.1.0'
+version = '18.5.420-ta.1.2.0'
 
 authors = [
     'benjamin.skinner',
